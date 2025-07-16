@@ -19,7 +19,7 @@ const db = admin.firestore();
 
 const bucket = admin.storage().bucket();
 
-const upload = multer({ dest: "uploads/" });
+const upload = multer({ storage: multer.memoryStorage() }); // In-memory only
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -128,37 +128,44 @@ app.post("/add-location", async (req, res) => {
 app.post("/upload-image", upload.single("image"), async (req, res) => {
   try {
     const file = req.file;
+    const folder = req.body.folder;
 
     if (!file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
 
-    const fileName = `${uuidv4()}_${file.originalname}`;
-    const folder = req.body.folder;
-    const destination = `${folder}/${fileName}`;
+    if (!folder) {
+      return res.status(400).json({ error: "No folder specified" });
+    }
 
-    // Upload to Firebase Storage
-    await bucket.upload(file.path, {
-      destination,
+    const fileName = `${uuidv4()}_${file.originalname}`;
+    const destination = `${folder}/${fileName}`;
+    const token = uuidv4(); // Needed for public access
+
+    const blob = bucket.file(destination);
+
+    const stream = blob.createWriteStream({
       metadata: {
         contentType: file.mimetype,
         metadata: {
-          firebaseStorageDownloadTokens: uuidv4(), // Required for public access
-        },
-      },
+          firebaseStorageDownloadTokens: token
+        }
+      }
     });
 
-    // Create public URL
-    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
-      destination
-    )}?alt=media`;
+    stream.on("error", (err) => {
+      console.error("Upload Error:", err);
+      return res.status(500).json({ error: "Upload failed" });
+    });
 
-    // Delete local file after upload
-    fs.unlinkSync(file.path);
+    stream.on("finish", () => {
+      const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(destination)}?alt=media&token=${token}`;
+      return res.status(200).json({ message: "File uploaded", url: publicUrl });
+    });
 
-    res.status(200).json({ message: "File uploaded", url: publicUrl });
+    stream.end(file.buffer); // Upload in-memory file
   } catch (error) {
-    console.error("Upload Error:", error);
+    console.error("Unexpected Error:", error);
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
