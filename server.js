@@ -2,8 +2,10 @@ const express = require('express');
 const admin = require('firebase-admin');
 const cors = require('cors');
 const dotenv = require('dotenv');
-const axios = require("axios")
-const qs = require("qs");
+const multer = require("multer");
+const path = require("path");
+const { v4: uuidv4 } = require("uuid");
+const fs = require("fs");
 
 dotenv.config();
 
@@ -26,10 +28,15 @@ admin.initializeApp({
     "auth_provider_x509_cert_url": process.env.AUTH_PROVIDER,
     "client_x509_cert_url": process.env.CLIENT_URL,
     "universe_domain": "googleapis.com"
-  })
+  }),
+  storageBucket: process.env.STORAGE_BUCKET,
 });
 
 const db = admin.firestore();
+
+const bucket = admin.storage().bucket();
+
+const upload = multer({ dest: "uploads/" });
 
 // Middleware to parse JSON bodies
 app.use(express.json());
@@ -108,7 +115,7 @@ app.post("/add-location", async (req, res) => {
   allData = req.body.data;
   const collection = allData.category;
   let moreData = allData.moreData;
-  if (allData.addCoor == "add") // means the location was sent as an address not as coordinates, so we will have to change that.
+  if (allData.addCoor == "add") // This means the location was sent as an address not as coordinates, so we will have to change that.
   {
     const see = await getCoordinates(allData.location)
     console.log(see)
@@ -132,9 +139,70 @@ app.post("/add-location", async (req, res) => {
   const docRef = db.collection(collection).doc();
   await docRef.set(allData);
 
-  res.status(200).send('Document added successfully');
-  
+  res.status(200).json({ id: docRef.id });
 })
+
+app.post("/upload-image", upload.single("image"), async (req, res) => {
+  try {
+    const file = req.file;
+
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    const fileName = `${uuidv4()}_${file.originalname}`;
+    const folder = req.body.folder;
+    const destination = `${folder}/${fileName}`;
+
+    // Upload to Firebase Storage
+    await bucket.upload(file.path, {
+      destination,
+      metadata: {
+        contentType: file.mimetype,
+        metadata: {
+          firebaseStorageDownloadTokens: uuidv4(), // Required for public access
+        },
+      },
+    });
+
+    // Create public URL
+    const publicUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(
+      destination
+    )}?alt=media`;
+
+    // Delete local file after upload
+    fs.unlinkSync(file.path);
+
+    res.status(200).json({ message: "File uploaded", url: publicUrl });
+  } catch (error) {
+    console.error("Upload Error:", error);
+    res.status(500).json({ error: "Internal Server Error" });
+  }
+});
+
+app.post("/get-images", async (req, res) => {
+  console.log(req.body);
+  const folder = req.body.folderId;
+  console.log(folder);
+
+  try {
+    const [files] = await bucket.getFiles({ prefix: `${folder}/` });
+
+    const urls = await Promise.all(
+      files.map(async (file) => {
+        const metadata = await file.getMetadata();
+        const token = metadata[0].metadata.firebaseStorageDownloadTokens;
+
+        return `https://firebasestorage.googleapis.com/v0/b/${bucket.name}/o/${encodeURIComponent(file.name)}?alt=media&token=${token}`;
+      })
+    );
+
+    res.status(200).json({ images: urls });
+  } catch (err) {
+    console.error("Error listing files:", err);
+    res.status(500).json({ error: "Failed to list images" });
+  }
+});
 
 async function getCoordinates(address) {
   const apiKey = process.env.MAPS_API_KEY; // Replace with your real API key
