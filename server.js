@@ -1,5 +1,4 @@
 const express = require('express');
-const admin = require('firebase-admin');
 const cors = require('cors');
 const dotenv = require('dotenv');
 const multer = require("multer");
