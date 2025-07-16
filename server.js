@@ -228,3 +228,5 @@ async function getCoordinates(address) {
     return null;
   }
 }
+
+module.exports = app;
