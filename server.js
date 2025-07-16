@@ -180,7 +180,7 @@ app.post("/upload-image", upload.single("image"), async (req, res) => {
   }
 });
 
-app.post("/get-images", async (req, res) => {
+app.post("/get-images", async (req, res) => { 
   console.log(req.body);
   const folder = req.body.folderId;
   console.log(folder);
