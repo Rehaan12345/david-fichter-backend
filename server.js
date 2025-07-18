@@ -38,25 +38,33 @@ app.get("/get-colls", async (req, res) => {
   res.send(collections.map(col => col.id));
 })
 
-// Endpoint to add a document to Firestore
+// (NOT USED!!) Endpoint to add a document to Firestore
 app.post('/add-document', async (req, res) => {
   try {
     const { data } = req.body;
     const collection = data.collection;
 
-    if (data.address) {
-      const see = await getCoordinates(data.address)
-      console.log(see)
-      const yCoord = see.lng;
-      const xCoord = see.lat;
-      const coords = [yCoord, xCoord];
-      data["coords"] = coords;
-    }
-    j
-    const docRef = db.collection(collection).doc();
-    await docRef.set(data);
+    if (!data.newLoc) { // means edit
+      const docRef = db.collection(collection).doc(docId);
+      await docRef.update(allData);
+      res.status(200).send('Document edited successfully');
+    } else { // adding a new doc
+      if (data.address) {
+        const see = await getCoordinates(data.address)
+        console.log(see)
+        const yCoord = see.lng;
+        const xCoord = see.lat;
+        const coords = [yCoord, xCoord];
+        data["coords"] = coords;
+      }
+      
+      const docRef = db.collection(collection).doc();
+      await docRef.set(data);
 
-    res.status(200).send('Document added successfully');
+      res.status(200).send('Document added successfully');
+    }
+
+    
   } catch (error) {
     console.error('Error adding document:', error);
     res.status(500).send('Internal Server Error');
@@ -94,35 +102,47 @@ app.post("/read-collection", async (req, res) => {
   }
 })
 
+// USED!
 app.post("/add-location", async (req, res) => {
+  console.log("starting add-location api");
   allData = req.body.data;
+  console.log(allData);
   const collection = allData.category;
   let moreData = allData.moreData;
-  if (allData.addCoor == "add") // This means the location was sent as an address not as coordinates, so we will have to change that.
-  {
-    const see = await getCoordinates(allData.location)
-    console.log(see)
-    const yCoord = see.lng;
-    const xCoord = see.lat;
-    const coords = [yCoord, xCoord];
-    allData["coords"] = coords;
+  console.log(moreData);
+
+  if (!allData.newLoc) {
+    const docRef = db.collection(collection).doc(allData.docId);
+      await docRef.update(allData);
+    res.status(200).json({ id: allData.docId });
+  } else {
+    if (allData.addCoor == "add") { // This means the location was sent as an address not as coordinates, so we will have to change that. 
+        const see = await getCoordinates(allData.Location)
+        console.log(see)
+        const yCoord = see.lng;
+        const xCoord = see.lat;
+        const coords = [yCoord, xCoord];
+        allData["coords"] = coords;
+      }
+      
+      // Now have to unpack all of the moreData and store it within the allData dict.
+      if (moreData.length > 0) {
+        for (let i = 0; i < moreData.length; i++) {
+          allData[Object.keys(moreData[i])[0]] = moreData[i][Object.keys(moreData[i])[0]];
+        }
+      }
+
+      delete allData.moreData;
+
+      console.log(allData);
+
+      const docRef = db.collection(collection).doc();
+      await docRef.set(allData);
+
+      console.log("end add-location api");
+      res.status(200).json({ id: docRef.id });
   }
   
-  // Now have to unpack all of the moreData and store it within the allData dict.
-  if (moreData.length > 0) {
-    for (let i = 0; i < moreData.length; i++) {
-      allData[Object.keys(moreData[i])[0]] = moreData[i][Object.keys(moreData[i])[0]];
-    }
-  }
-
-  delete allData.moreData;
-
-  console.log(allData);
-
-  const docRef = db.collection(collection).doc();
-  await docRef.set(allData);
-
-  res.status(200).json({ id: docRef.id });
 })
 
 app.post("/upload-image", upload.single("image"), async (req, res) => {
@@ -194,8 +214,21 @@ app.post("/get-images", async (req, res) => {
   }
 });
 
+app.post("/delete-doc/", async (req, res) => {
+  const deleteId = req.body.deleteId;
+  console.log(deleteId);
+
+  try {
+    await db.collection("murals").doc(deleteId).delete();
+    res.status(200).json({ message: "Document deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting document:", error);
+    res.status(500).json({ error: "Failed to delete document" });
+  }
+});
+
 async function getCoordinates(address) {
-  const apiKey = process.env.MAPS_API_KEY; // Replace with your real API key
+  const apiKey = process.env.MAPS_API_KEY;
   const encodedAddress = encodeURIComponent(address);
   const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${apiKey}`;
   console.log(url);
