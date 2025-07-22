@@ -113,17 +113,25 @@ app.post("/add-location", async (req, res) => {
 
   if (!allData.newLoc) {
     const docRef = db.collection(collection).doc(allData.docId);
-      await docRef.update(allData);
+    await docRef.update(allData);
     res.status(200).json({ id: allData.docId });
   } else {
     if (allData.addCoor == "add") { // This means the location was sent as an address not as coordinates, so we will have to change that. 
-        const see = await getCoordinates(allData.Location)
-        console.log(see)
-        const yCoord = see.lng;
-        const xCoord = see.lat;
-        const coords = [yCoord, xCoord];
-        allData["coords"] = coords;
-      }
+      const see = await getCoordinates(allData.Location)
+      console.log(see)
+      const yCoord = see.lng;
+      const xCoord = see.lat;
+      const coords = [yCoord, xCoord];
+      allData["coords"] = coords;
+    } else if (allData.addCoor == "coor") { // Location was sent as coordinates so will have to switch places of the x & y coords.
+      const coordsTemp = allData["Location"];
+      const comma = coordsTemp.indexOf(",");
+      const xCoord = coordsTemp.substring(0, comma);
+      const yCoord = coordsTemp.substring(comma+2);
+      const coords = [parseFloat(yCoord), parseFloat(xCoord)];
+      allData["coords"] = coords;
+      
+    }
       
       // Now have to unpack all of the moreData and store it within the allData dict.
       if (moreData.length > 0) {
