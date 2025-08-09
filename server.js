@@ -224,7 +224,6 @@ app.post("/get-images", async (req, res) => {
 
 app.post("/delete-doc/", async (req, res) => {
   const deleteId = req.body.deleteId;
-  console.log(deleteId);
 
   try {
     await db.collection("murals").doc(deleteId).delete();
@@ -234,6 +233,13 @@ app.post("/delete-doc/", async (req, res) => {
     res.status(500).json({ error: "Failed to delete document" });
   }
 });
+
+app.post("/check-pass", async (req, res) => {
+  const check = req.body.checkPass;
+  const pass = process.env.ADD_PSWRD;
+  if (check == pass) res.status(200).json({ status: 0});
+    res.status(500).json({ status: -1 });
+})
 
 async function getCoordinates(address) {
   const apiKey = process.env.MAPS_API_KEY;
